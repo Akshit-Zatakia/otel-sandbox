@@ -1,0 +1,36 @@
+# Minimal OpenTelemetry Collector config for local sandbox
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "localhost:4317"
+      http:
+        endpoint: "localhost:4318"
+
+exporters:
+  debug:
+    verbosity: detailed
+  file/traces:
+    path: ./otel-traces.json
+  file/metrics:
+    path: ./otel-metrics.json
+  file/logs:
+    path: ./otel-logs.json
+
+processors:
+  batch: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: []
+      exporters: [file/traces]
+    metrics:
+      receivers: [otlp]
+      processors: []
+      exporters: [file/metrics]
+    logs:
+      receivers: [otlp]
+      processors: []
+      exporters: [file/logs]
