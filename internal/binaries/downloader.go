@@ -14,22 +14,26 @@ import (
 )
 
 type Binary struct {
-	Name string
-	URL  string
+	Name       string
+	URL        string
+	BinaryPath string // Path within extracted archive
 }
 
 var binaries = []Binary{
 	{
-		Name: "otelcol",
-		URL:  "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.131.1/otelcol-contrib_0.131.1_%s_%s.tar.gz",
+		Name:       "otelcol",
+		URL:        "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.131.1/otelcol-contrib_0.131.1_%s_%s.tar.gz",
+		BinaryPath: "otelcol-contrib", // Direct binary
 	},
 	{
-		Name: "jaeger-all-in-one",
-		URL:  "https://github.com/jaegertracing/jaeger/releases/download/v1.72.0/jaeger-1.72.0-%s-%s.tar.gz",
+		Name:       "jaeger-all-in-one",
+		URL:        "https://github.com/jaegertracing/jaeger/releases/download/v1.72.0/jaeger-1.72.0-%s-%s.tar.gz",
+		BinaryPath: "jaeger-all-in-one", // Inside jaeger-1.72.0-{os}-{arch}/ folder
 	},
 	{
-		Name: "prometheus",
-		URL:  "https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.%s-%s.tar.gz",
+		Name:       "prometheus",
+		URL:        "https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.%s-%s.tar.gz",
+		BinaryPath: "prometheus", // Inside prometheus-3.5.0.{os}-{arch}/ folder
 	},
 }
 
@@ -62,42 +66,85 @@ func downloadBinary(bin Binary, binDir string, goos, goarch string) error {
 	url := fmt.Sprintf(bin.URL, goos, goarch)
 	fmt.Printf("⬇️  Downloading %s from %s\n", bin.Name, url)
 
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to download %s: %w", bin.Name, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("bad status for %s: %s", bin.Name, resp.Status)
-	}
-
+	// Download and extract
 	tmpFile := filepath.Join(binDir, bin.Name+".tmp")
-	out, err := os.Create(tmpFile)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+	if err := downloadFile(url, tmpFile); err != nil {
+		return err
 	}
-	defer out.Close()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return fmt.Errorf("failed to save %s: %w", bin.Name, err)
+	// Extract to temp directory
+	extractDir := filepath.Join(binDir, bin.Name+"_extract")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return fmt.Errorf("failed to create extract dir: %w", err)
 	}
+	defer os.RemoveAll(extractDir)
 
 	if strings.HasSuffix(url, ".tar.gz") {
-		if err := extractTarGz(tmpFile, binDir); err != nil {
+		if err := extractTarGz(tmpFile, extractDir); err != nil {
 			return err
 		}
 	} else if strings.HasSuffix(url, ".zip") {
-		if err := extractZip(tmpFile, binDir); err != nil {
+		if err := extractZip(tmpFile, extractDir); err != nil {
 			return err
 		}
-	} else {
-		os.Rename(tmpFile, binPath)
+	}
+
+	// Find and move the binary
+	if err := findAndMoveBinary(extractDir, bin.BinaryPath, binPath); err != nil {
+		return fmt.Errorf("failed to locate binary %s: %w", bin.Name, err)
 	}
 
 	os.Chmod(binPath, 0755)
 	fmt.Printf("✅ %s installed at %s\n", bin.Name, binPath)
 	return nil
+}
+
+// Add this helper function
+func findAndMoveBinary(extractDir, binaryName, destPath string) error {
+	var foundPath string
+
+	err := filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && (info.Name() == binaryName || strings.Contains(info.Name(), binaryName)) {
+			foundPath = path
+			return filepath.SkipDir // Stop walking once found
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if foundPath == "" {
+		return fmt.Errorf("binary %s not found in extracted archive", binaryName)
+	}
+
+	return os.Rename(foundPath, destPath)
+}
+
+// Split download logic
+func downloadFile(url, filePath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
 
 func extractTarGz(filePath, dest string) error {

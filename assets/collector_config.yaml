@@ -20,6 +20,10 @@ exporters:
     endpoint: "localhost:14317"  # Jaeger's gRPC endpoint
     tls:
       insecure: true
+  prometheus:
+    endpoint: "localhost:8889"  # Prometheus metrics endpoint
+    const_labels:
+      source: "otel-sandbox"
 
 processors:
   batch: {}
@@ -33,7 +37,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: []
-      exporters: [file/metrics, debug]
+      exporters: [file/metrics, debug, prometheus]
     logs:
       receivers: [otlp]
       processors: []

@@ -63,17 +63,17 @@ func (m *Manager) Up() error {
 	fmt.Println("🚀 Starting OTel Sandbox...")
 
 	// Download binaries if not present - uncomment this line
-	// if err := m.DownloadBinaries(); err != nil {
-	// 	fmt.Printf("⚠️  Warning: failed to download binaries: %v\n", err)
-	// 	fmt.Println("💡 You can manually place binaries in ./bin/ or ensure they're in your PATH")
-	// }
+	if err := m.DownloadBinaries(); err != nil {
+		fmt.Printf("⚠️  Warning: failed to download binaries: %v\n", err)
+		fmt.Println("💡 You can manually place binaries in ./bin/ or ensure they're in your PATH")
+	}
 
 	fmt.Println("\n📦 Starting services...")
 
 	// Start OpenTelemetry Collector (otelcol)
 	if _, ok := m.state.Processes["otelcol"]; !ok {
 		fmt.Print("  🔧 Starting OTel Collector... ")
-		pid, err := m.startProcess("otelcol-contrib", []string{"--config", "assets/collector_config.yaml"}, "logs/otelcol.log")
+		pid, err := m.startProcess("otelcol", []string{"--config", "assets/collector_config.yaml"}, "logs/otelcol.log")
 		if err != nil {
 			fmt.Printf("❌\n     Error: %v\n", err)
 			fmt.Println("     💡 Check logs/otelcol.log for details")
