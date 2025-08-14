@@ -55,51 +55,90 @@ func (m *Manager) saveState() error {
 
 // Up starts the collector, jaeger and prometheus if available on PATH or ./bin
 func (m *Manager) Up() error {
-	// Download binaries if not present
+	// Ensure logs directory exists
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	fmt.Println("🚀 Starting OTel Sandbox...")
+
+	// Download binaries if not present - uncomment this line
 	// if err := m.DownloadBinaries(); err != nil {
-	// 	return err
+	// 	fmt.Printf("⚠️  Warning: failed to download binaries: %v\n", err)
+	// 	fmt.Println("💡 You can manually place binaries in ./bin/ or ensure they're in your PATH")
 	// }
+
+	fmt.Println("\n📦 Starting services...")
 
 	// Start OpenTelemetry Collector (otelcol)
 	if _, ok := m.state.Processes["otelcol"]; !ok {
+		fmt.Print("  🔧 Starting OTel Collector... ")
 		pid, err := m.startProcess("otelcol-contrib", []string{"--config", "assets/collector_config.yaml"}, "logs/otelcol.log")
 		if err != nil {
-			fmt.Println("Warning: failed to start otelcol:", err)
+			fmt.Printf("❌\n     Error: %v\n", err)
+			fmt.Println("     💡 Check logs/otelcol.log for details")
 		} else {
 			m.state.Processes["otelcol"] = pid
-			fmt.Println("Started otelcol pid:", pid)
+			fmt.Printf("✅ (pid: %d)\n", pid)
 		}
 	} else {
-		fmt.Println("otelcol already running with pid", m.state.Processes["otelcol"])
+		fmt.Printf("  ✅ OTel Collector already running (pid: %d)\n", m.state.Processes["otelcol"])
 	}
 
 	// Start Jaeger (jaeger-all-in-one)
 	if _, ok := m.state.Processes["jaeger"]; !ok {
-		pid, err := m.startProcess("jaeger-all-in-one", []string{"--collector.zipkin.host-port=9411"}, "logs/jaeger.log")
+		fmt.Print("  🔧 Starting Jaeger... ")
+		pid, err := m.startProcess("jaeger-all-in-one", []string{"--collector.zipkin.host-port=9411", "--collector.otlp.grpc.host-port=:14317", "--collector.otlp.http.host-port=:14318"}, "logs/jaeger.log")
 		if err != nil {
-			fmt.Println("Warning: failed to start jaeger:", err)
+			fmt.Printf("❌\n     Error: %v\n", err)
+			fmt.Println("     💡 Check logs/jaeger.log for details")
 		} else {
 			m.state.Processes["jaeger"] = pid
-			fmt.Println("Started jaeger pid:", pid)
+			fmt.Printf("✅ (pid: %d)\n", pid)
 		}
 	} else {
-		fmt.Println("jaeger already running with pid", m.state.Processes["jaeger"])
+		fmt.Printf("  ✅ Jaeger already running (pid: %d)\n", m.state.Processes["jaeger"])
 	}
 
 	// Start Prometheus if available
 	if _, ok := m.state.Processes["prometheus"]; !ok {
-		pid, err := m.startProcess("prometheus", []string{"--config.file=assets/prometheus.yml"}, "logs/prometheus.log")
+		fmt.Print("  🔧 Starting Prometheus... ")
+		pid, err := m.startProcess("prometheus", []string{"--config.file=assets/prometheus.yml", "--storage.tsdb.path=./prometheus-data"}, "logs/prometheus.log")
 		if err != nil {
-			fmt.Println("Warning: failed to start prometheus:", err)
+			fmt.Printf("❌\n     Error: %v\n", err)
+			fmt.Println("     💡 Check logs/prometheus.log for details")
 		} else {
 			m.state.Processes["prometheus"] = pid
-			fmt.Println("Started prometheus pid:", pid)
+			fmt.Printf("✅ (pid: %d)\n", pid)
 		}
 	} else {
-		fmt.Println("prometheus already running with pid", m.state.Processes["prometheus"])
+		fmt.Printf("  ✅ Prometheus already running (pid: %d)\n", m.state.Processes["prometheus"])
 	}
 
-	return m.saveState()
+	// Save state first
+	if err := m.saveState(); err != nil {
+		return fmt.Errorf("failed to save state: %w", err)
+	}
+
+	// Wait for services to initialize
+	fmt.Println("\n⏳ Waiting for services to initialize...")
+	time.Sleep(3 * time.Second)
+
+	fmt.Println("\n🎉 OTel Sandbox is ready!")
+	fmt.Println("\n📊 Available UIs:")
+	if _, ok := m.state.Processes["jaeger"]; ok {
+		fmt.Println("   🔍 Jaeger UI:     http://localhost:16686")
+	}
+	if _, ok := m.state.Processes["prometheus"]; ok {
+		fmt.Println("   📈 Prometheus UI: http://localhost:9090")
+	}
+
+	fmt.Println("\n🧪 Next steps:")
+	fmt.Println("   1. Run 'otel-sandbox verify' to test telemetry collection")
+	fmt.Println("   2. Run 'otel-sandbox export --format summary' to view collected data")
+	fmt.Println("   3. Check 'otel-sandbox status' to see process status")
+
+	return nil
 }
 
 // Down stops all processes recorded in state

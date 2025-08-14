@@ -16,6 +16,10 @@ exporters:
     path: ./otel-metrics.json
   file/logs:
     path: ./otel-logs.json
+  otlp:
+    endpoint: "localhost:14317"  # Jaeger's gRPC endpoint
+    tls:
+      insecure: true
 
 processors:
   batch: {}
@@ -25,12 +29,12 @@ service:
     traces:
       receivers: [otlp]
       processors: []
-      exporters: [file/traces]
+      exporters: [file/traces, debug, otlp]
     metrics:
       receivers: [otlp]
       processors: []
-      exporters: [file/metrics]
+      exporters: [file/metrics, debug]
     logs:
       receivers: [otlp]
       processors: []
-      exporters: [file/logs]
+      exporters: [file/logs, debug]
