@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*-release'
   workflow_dispatch:
     inputs:
       version:
@@ -15,115 +15,25 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build binaries
+  release:
+    name: Release with GoReleaser
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            platform: linux-amd64
-          - goos: linux
-            goarch: arm64
-            platform: linux-arm64
-          - goos: darwin
-            goarch: amd64
-            platform: darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            platform: darwin-arm64
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Important: GoReleaser needs full git history
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-        run: |
-          go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
-            -o otel-sandbox-${{ matrix.platform }} \
-            cmd/main.go
-
-      - name: Create tarball (Unix)
-        run: |
-          tar -czf otel-sandbox-${{ matrix.platform }}.tar.gz \
-            otel-sandbox-${{ matrix.platform }} \
-            README.md \
-            assets/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
         with:
-          name: otel-sandbox-${{ matrix.platform }}
-          path: |
-            otel-sandbox-${{ matrix.platform }}.tar.gz
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist/
-
-      - name: List artifacts
-        run: find dist/ -type f -ls
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.VERSION }}
-          name: OTel Sandbox ${{ steps.version.outputs.VERSION }}
-          body: |
-            ## OTel Sandbox ${{ steps.version.outputs.VERSION }}
-            
-            ### Download
-            Choose the appropriate binary for your platform:
-            - **Linux AMD64**: `otel-sandbox-linux-amd64.tar.gz`
-            - **Linux ARM64**: `otel-sandbox-linux-arm64.tar.gz`
-            - **macOS AMD64** (Intel): `otel-sandbox-darwin-amd64.tar.gz`
-            - **macOS ARM64** (Apple Silicon): `otel-sandbox-darwin-arm64.tar.gz`
-            
-            ### Quick Start
-            1. Download and extract the appropriate binary
-            2. Run `./otel-sandbox up` to start the sandbox
-            3. Visit http://localhost:16686 for Jaeger and http://localhost:9090 for Prometheus
-            
-            See the [README](https://github.com/Akshit-Zatakia/otel-sandbox#quick-start) for detailed instructions.
-          files: dist/**/*
-          draft: false
-          prerelease: false

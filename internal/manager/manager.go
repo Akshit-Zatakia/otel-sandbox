@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	downloader "github.com/Akshit-Zatakia/otel-sandbox/internal/binaries"
@@ -207,7 +206,8 @@ func (m *Manager) startProcess(execName string, args []string, logfile string) (
 
 	// start process in its own process group so we can kill children
 	// On Unix use SysProcAttr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	m.setProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return 0, err
@@ -243,26 +243,25 @@ func (m *Manager) stopPID(pid int) error {
 		return fmt.Errorf("pid %d not running", pid)
 	}
 	// kill process group
-	pgid, err := syscall.Getpgid(pid)
-	if err == nil {
-		// negative pid means kill process group
-		_ = syscall.Kill(-pgid, syscall.SIGTERM)
-		// fallback
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
-		return nil
-	}
-	// fallback: kill pid
-	_ = syscall.Kill(pid, syscall.SIGTERM)
-	_ = syscall.Kill(pid, syscall.SIGKILL)
-	return nil
+	// pgid, err := m.Getpgid(pid)
+	// if err == nil {
+	// 	// negative pid means kill process group
+	// 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	// 	// fallback
+	// 	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	// 	return nil
+	// }
+	// // fallback: kill pid
+	// _ = syscall.Kill(pid, syscall.SIGTERM)
+	// _ = syscall.Kill(pid, syscall.SIGKILL)
+	return m.killProcessGroup(pid)
 }
 
 func (m *Manager) isAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	err := syscall.Kill(pid, 0)
-	return err == nil
+	return m.isProcessAlive(pid)
 }
 
 // helper: read port from env or defaults (not used yet)
