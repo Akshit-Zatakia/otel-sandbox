@@ -36,6 +36,8 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     # use zip for windows archives
+    files:
+      - assets/**
     format_overrides:
       - goos: windows
         formats: [zip]
